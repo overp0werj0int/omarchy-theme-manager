@@ -12,6 +12,7 @@ const harness = () => {
   const calls = []
   const state = {
     opened: true,
+    themeRequest: null,
     requestSerial: 7,
     requestActive: true,
     selectionFile: "/tmp/selection",

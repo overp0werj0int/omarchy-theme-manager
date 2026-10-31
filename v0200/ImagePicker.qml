@@ -58,6 +58,7 @@ Item {
   property int requestSerial: 0
   property int applySerial: 0
   property string doneFile: ""
+  property var themeRequest: null
   property string filterText: ""
   property bool catalogMode: false
   property var catalogPreviousImages: []
@@ -107,6 +108,7 @@ Item {
   readonly property string themeBackgroundsRoot: homeDir + "/.config/omarchy/backgrounds"
   readonly property string currentThemeRoot: stateHome + "/omarchy/current/theme/backgrounds"
   readonly property string currentThemeNamePath: stateHome + "/omarchy/current/theme.name"
+  readonly property string themePreviewRoot: (Quickshell.env("XDG_CACHE_HOME") || homeDir + "/.cache") + "/omarchy/theme-selector/previews"
   property string pendingInstallPurpose: ""
   property string pendingInstallSelectionFile: ""
   property string pendingInstallDoneFile: ""
@@ -1430,9 +1432,27 @@ Item {
   function openThemesSwitcher() {
     if (themeManager.themePickerActive && !wallpaperPickerActive && !iconsMode && !iconsBrowseMode) return
     if (!(localWallpaperMode || wallhavenMode || folderMode || iconsMode || iconsBrowseMode)) return
-    switcherRun.command = [omarchyBin + "/omarchy-theme-switcher"]
-    switcherRun.start()
+    openThemes()
+  }
+
+  function openThemes() {
     cancel()
+    themeRequest = { rows: null, opened: false }
+    themeManager.refreshInventory()
+    if (!themeRowsRun.running) themeRowsRun.start()
+  }
+
+  function openThemeRequest() {
+    const request = themeRequest
+    if (!request || request.opened || request.rows === null || !themeManager.inventoryReady) return
+    const previews = ImagePickerModel.loadRows(request.rows)
+    const currentPreview = previews.find(function(image) {
+      return ThemeManagerModel.themeNameForPath(image.filePath) === root.currentThemeName
+    })
+    const selected = currentPreview ? currentPreview.filePath : themePreviewRoot + "/" + currentThemeName + ".png"
+    openSelector("", request.rows || "\n", selected, "", "", true, true)
+    request.opened = true
+    themeRequest = request
   }
 
   function browseForCurrentMode() {
@@ -1969,6 +1989,12 @@ Item {
   }
 
   function finishSelection(path) {
+    if (themeRequest && ThemeManagerModel.isSafeThemeName(ThemeManagerModel.themeNameForPath(path))) {
+      switcherRun.command = [omarchyBin + "/omarchy-theme-set", ThemeManagerModel.themeNameForPath(path)]
+      switcherRun.start()
+      cancel()
+      return
+    }
     if (!path || !selectionFile) {
       cancel()
       return
@@ -2041,6 +2067,7 @@ Item {
   }
 
   function cancel() {
+    themeRequest = null
     wallpaperApply.cancel()
     pendingWallpaperSelection = null
     wallpaperApplyError = ""
@@ -2060,6 +2087,7 @@ Item {
   }
 
   function closeSelector(nextDoneFile) {
+    themeRequest = null
     wallpaperApply.cancel()
     pendingWallpaperSelection = null
     wallpaperApplyError = ""
@@ -2085,6 +2113,10 @@ Item {
 
   function loadRows(rows, reveal) {
     let newImages = ImagePickerModel.loadRows(rows)
+    if (themeManager.inventoryReady && (themeRequest
+        || (newImages.length > 0 && ThemeManagerModel.isThemePreviewPath(newImages[0].filePath))))
+      newImages = ThemeManagerModel.withInventoryThemes(
+        newImages, themeManager.installedThemes, themeManager.stockThemes, themePreviewRoot)
     if (wallpaperPickerActive)
       newImages = WallpaperCommandModel.prioritizeFavorites(
         newImages,
@@ -2107,6 +2139,7 @@ Item {
   }
 
   function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextShowLabels, nextFilterable) {
+    themeRequest = null
     wallpaperApply.cancel()
     pendingWallpaperSelection = null
     wallpaperApplyError = ""
@@ -2352,6 +2385,10 @@ Item {
     if (payload) {
       try { args = JSON.parse(payload) || {} } catch (_error) { args = {} }
     }
+    if (args.source === "themes") {
+      openThemes()
+      return
+    }
     const dirs = String(args.imageDirs || imageDirs)
     const rows = String(args.imageRows || "")
     const sel = String(args.selectedImage || selectedImage)
@@ -2492,6 +2529,21 @@ Item {
     environment: root.omarchyEnvironment
     deadlineMs: 1800000
     maxBytes: 65536
+  }
+
+  Run {
+    id: themeRowsRun
+    command: [root.omarchyBin + "/omarchy-theme-switcher", "--print-rows"]
+    environment: root.helperEnvironment
+    deadlineMs: 120000
+    maxBytes: 1048576
+    keepBytes: 1048576
+    onFinished: function(result) {
+      if (!root.themeRequest || root.themeRequest.opened) return
+      root.themeRequest = { rows: result.state === "ok" ? String(result.stdout || "") : "", opened: false }
+      root.openThemeRequest()
+      if (result.state !== "ok") root.showStatus("Could not load theme previews")
+    }
   }
 
   // flock -n answers at once: 5 s covers a stalled runtime directory.
@@ -2728,6 +2780,13 @@ Item {
     omarchyBin: root.omarchyBin
     helperEnvironment: root.helperEnvironment
     omarchyEnvironment: root.omarchyEnvironment
+    onInventoryReadyChanged: {
+      if (!inventoryReady) return
+      if (root.themeRequest && !root.themeRequest.opened)
+        root.openThemeRequest()
+      if (root.themeCollectionsActive)
+        root.loadRows(root.loadedImageRows, false)
+    }
     onThemeRemoved: function(name) { root.removeThemeFromRows(name) }
     onFocusRequested: Qt.callLater(root.focusPicker)
   }

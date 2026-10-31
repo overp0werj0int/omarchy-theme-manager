@@ -81,3 +81,30 @@ test("formats theme names for user-facing confirmation and errors", () => {
   assert.equal(model.labelForThemeName("catppuccin_mocha"), "Catppuccin Mocha")
   assert.equal(model.labelForThemeName("tokyo-night"), "Tokyo Night")
 })
+
+test("includes every installed theme even when a theme has no preview", () => {
+  const previews = "/home/test/.cache/omarchy/theme-selector/previews"
+  const nord = {
+    filePath: previews + "/nord.jpg",
+    fileName: "nord.jpg",
+    thumbnailPath: "/cache/nord.jpg"
+  }
+  const rows = model.withInventoryThemes(
+    [nord],
+    { azure: true },
+    { nord: true, "osaka-jade": true },
+    previews
+  )
+  assert.deepEqual(
+    rows.map((row) => model.themeNameForPath(row.filePath)),
+    ["azure", "nord", "osaka-jade"]
+  )
+  assert.equal(rows[1], nord)
+  assert.equal(rows[0].thumbnailPath, "")
+  assert.equal(rows[2].thumbnailPath, "")
+  assert.equal(
+    model.withInventoryThemes(rows, { azure: true }, { nord: true, "osaka-jade": true }, previews)
+      .length,
+    3
+  )
+})

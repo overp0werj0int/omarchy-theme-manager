@@ -65,6 +65,25 @@ const themeInventoryFromText = (text) =>
 
 const hasTheme = (themes, name) => isSafeThemeName(name) && themeValues(themes)[name] === true
 
+const withInventoryThemes = (images, installedThemes, stockThemes, previewRoot) => {
+  const previews = new Map()
+  for (const image of Array.isArray(images) ? images : []) {
+    const name = themeNameForPath(image && image.filePath)
+    if (isSafeThemeName(name) && !previews.has(name)) previews.set(name, image)
+  }
+  return Object.keys(Object.assign({}, themeValues(stockThemes), themeValues(installedThemes)))
+    .filter(isSafeThemeName)
+    .sort()
+    .map(
+      (name) =>
+        previews.get(name) || {
+          filePath: stringValue(previewRoot) + "/" + name + ".png",
+          fileName: name + ".png",
+          thumbnailPath: ""
+        }
+    )
+}
+
 const withoutTheme = (themes, name) =>
   Object.keys(themeValues(themes)).reduce((remainingThemes, themeName) => {
     if (themeName !== name) remainingThemes[themeName] = true
@@ -87,6 +106,7 @@ if (typeof module !== "undefined") {
     themeMapFromText,
     themeInventoryFromText,
     hasTheme,
+    withInventoryThemes,
     withoutTheme,
     withoutNamedImage
   }
