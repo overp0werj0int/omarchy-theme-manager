@@ -2526,7 +2526,7 @@ Item {
   // they open; a menu the user left open for half an hour is ended.
   Run {
     id: switcherRun
-    environment: root.omarchyEnvironment
+    environment: Object.assign({}, root.omarchyEnvironment, { OMARCHY_THEME_WAIT: "1" })
     deadlineMs: 1800000
     maxBytes: 65536
   }
